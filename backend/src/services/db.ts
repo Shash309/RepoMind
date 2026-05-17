@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import type { VectorDocument } from '../types';
 
 // Use a path relative to the compiled file so it works on Render's writable filesystem.
 // In production: dist/index.js → __dirname = dist/ → data dir = dist/../data = <root>/data
@@ -30,7 +31,7 @@ db.exec(`
 export function insertDocument(
   id: string,
   text: string,
-  metadata: Record<string, unknown>,
+  metadata: VectorDocument['metadata'],
   embedding: number[]
 ) {
   const stmt = db.prepare(
@@ -39,12 +40,12 @@ export function insertDocument(
   stmt.run(id, text, JSON.stringify(metadata), JSON.stringify(embedding));
 }
 
-export function getAllDocuments() {
+export function getAllDocuments(): (VectorDocument & { embedding: number[] })[] {
   const stmt = db.prepare('SELECT * FROM documents');
   return (stmt.all() as any[]).map((row) => ({
-    id: row.id,
-    text: row.text,
-    metadata: JSON.parse(row.metadata) as Record<string, unknown>,
+    id: row.id as string,
+    text: row.text as string,
+    metadata: JSON.parse(row.metadata) as VectorDocument['metadata'],
     embedding: JSON.parse(row.embedding) as number[],
   }));
 }
