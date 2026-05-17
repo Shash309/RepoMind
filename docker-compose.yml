@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: ./backend
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - COHERE_API_KEY=${COHERE_API_KEY}
+    volumes:
+      - repo_data:/app/.repos
+      - db_data:/app/data
+
+volumes:
+  repo_data:
+  db_data:

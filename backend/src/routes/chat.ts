@@ -1,38 +1,28 @@
-import { NextRequest } from 'next/server';
-import { askLLMStream } from '../../../lib/llm';
-import { VectorStore } from '../../../lib/vectorStore';
-import { ChatMessage } from '../../../types';
+import { Router, Request, Response } from 'express';
+import { askLLMStream } from '../services/llm';
+import { VectorStore } from '../services/vectorStore';
+import { ChatMessage } from '../types';
 
+const router = Router();
 const normalize = (p: string | null | undefined) => (p ?? '').replace(/\\/g, '/');
 
-export async function POST(req: NextRequest) {
+router.post('/', async (req: Request, res: Response): Promise<any> => {
   try {
-    const { messages, activeFile }: { messages: ChatMessage[]; activeFile?: string | null } = await req.json();
+    const { messages, activeFile }: { messages: ChatMessage[]; activeFile?: string | null } = req.body;
 
     if (!messages || messages.length === 0) {
-      return new Response('No messages provided', { status: 400 });
+      return res.status(400).send('No messages provided');
     }
 
     const lastMessage = messages[messages.length - 1];
     const userMessage = lastMessage.content;
     const normalizedActiveFile = normalize(activeFile);
 
-    // --- Active file context ---
-    // If the user has a file open, fetch ALL its chunks (no cap)
     let activeFileChunks: any[] = [];
     if (normalizedActiveFile) {
       activeFileChunks = VectorStore.getByFilePath(normalizedActiveFile);
-      console.log(`[ActiveFile] Received: "${normalizedActiveFile}" → matched ${activeFileChunks.length} chunks`);
-      if (activeFileChunks.length === 0) {
-        const allDocs = VectorStore.getAll();
-        if (allDocs.length > 0) {
-          console.log(`[ActiveFile] Sample stored path: "${normalize(allDocs[0].metadata.path)}"`);
-          console.log(`[ActiveFile] Received path:      "${normalizedActiveFile}"`);
-        }
-      }
     }
 
-    // --- Folder structure question detection ---
     const isFolderQuestion = /folder|structure|directory|layout|organized|overview|architecture|file tree/i.test(userMessage);
     
     let repoSummaryChunk: any[] = [];
@@ -40,37 +30,21 @@ export async function POST(req: NextRequest) {
       repoSummaryChunk = VectorStore.getByFilePath('__REPO_SUMMARY__').slice(0, 1);
     }
 
-    // --- Query expansion for better similarity ---
     const expandedQuery = `${userMessage}\nrepository code codebase source files programming`;
 
-    // Semantic search for additional context
     const semanticChunks = await VectorStore.search(expandedQuery, 15);
 
-    // Deduplicate: remove semantic chunks already covered by activeFile or summary
     const usedIds = new Set([
       ...activeFileChunks.map((c: any) => c.id),
       ...repoSummaryChunk.map((c: any) => c.id),
     ]);
     const dedupedSemantic = semanticChunks
       .filter(c => !usedIds.has(c.id))
-      .filter(c => normalize(c.metadata.path) !== normalizedActiveFile) // exclude active file from semantic
+      .filter(c => normalize(c.metadata.path) !== normalizedActiveFile)
       .slice(0, 5);
 
-    // Combine: summary first, then ALL active file chunks, then semantic extras
     const allRetrieved = [...repoSummaryChunk, ...activeFileChunks, ...dedupedSemantic].slice(0, 20);
 
-    // --- Diagnostics ---
-    console.log('--- CHAT DIAGNOSTICS ---');
-    console.log(`User asked: "${userMessage}"`);
-    if (normalizedActiveFile) console.log(`Active file: ${normalizedActiveFile} (${activeFileChunks.length} chunks injected)`);
-    if (isFolderQuestion) console.log(`Folder question detected — repo summary injected`);
-    console.log(`Retrieved ${allRetrieved.length} total chunks:`);
-    allRetrieved.forEach((chunk, idx) => {
-      console.log(`  [${idx + 1}] Score: ${chunk.score?.toFixed(4)} | File: ${chunk.metadata.path} (Chunk ${chunk.metadata.chunkIndex + 1})`);
-    });
-    console.log('------------------------');
-
-    // Build the context block
     let contextBlock = "No relevant code found in the current session.";
     if (allRetrieved.length > 0) {
       contextBlock = allRetrieved.map(chunk => 
@@ -78,7 +52,6 @@ export async function POST(req: NextRequest) {
       ).join('\n');
     }
 
-    // Construct System and User Prompts
     const systemPrompt = `You are an expert code analyst embedded inside RepoMind.
 When given code chunks from a repository, you explain them the way a sharp senior engineer would — direct, specific, and grounded in what is actually written.
 
@@ -119,30 +92,20 @@ Relevant code chunks:
 ${contextBlock}
 `;
 
-    // Prepend active file context to the user prompt (internal only, not shown in UI)
     let augmentedUserMessage = userMessage;
     if (normalizedActiveFile) {
       augmentedUserMessage = `[Currently viewing file: ${normalizedActiveFile}]\n\n${userMessage}`;
     }
 
-    // Optionally include recent chat history for context continuity
     let conversationHistory = messages.slice(-5, -1).map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n\n');
     const userPrompt = `${conversationHistory ? `Conversation History:\n${conversationHistory}\n\n` : ''}User Question: ${augmentedUserMessage}`;
 
-    // Send to Groq/Ollama and get streaming response
-    const { stream, usedFallback } = await askLLMStream(systemPrompt, userPrompt);
-
-    // Return stream to the frontend
-    return new Response(stream, {
-      headers: {
-        'Content-Type': 'text/plain; charset=utf-8',
-        'Cache-Control': 'no-cache',
-        'X-Fallback-Used': usedFallback ? 'true' : 'false',
-      },
-    });
+    await askLLMStream(systemPrompt, userPrompt, res);
 
   } catch (error: any) {
     console.error('Chat API Error:', error);
-    return new Response(error.message, { status: 500 });
+    res.status(500).send(error.message);
   }
-}
+});
+
+export default router;

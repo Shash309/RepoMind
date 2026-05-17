@@ -23,12 +23,9 @@ export async function cloneRepo(repoUrl: string): Promise<string> {
     fs.mkdirSync(REPOS_DIR, { recursive: true });
   }
 
-  // Generate a folder name based on the repo URL to avoid clashes
   const repoName = repoUrl.split('/').pop()?.replace('.git', '') || 'unknown-repo';
   const cloneDir = path.join(REPOS_DIR, repoName);
 
-  // For this application, we'll re-clone or just use the existing one if it exists.
-  // To keep it simple, let's remove existing dir and clone fresh.
   if (fs.existsSync(cloneDir)) {
     fs.rmSync(cloneDir, { recursive: true, force: true });
   }
@@ -63,12 +60,10 @@ export async function getRepoFiles(dir: string, baseDir: string = dir): Promise<
       const isHiddenEnv = file === '.env' || file.startsWith('.env.');
       const isEnvExample = file === '.env.example';
       
-      // Strict exclusion
       if (IGNORED_FILES.includes(file)) continue;
       if (IGNORED_EXTENSIONS.includes(ext)) continue;
       if (isHiddenEnv && !isEnvExample) continue;
 
-      // Inclusion criteria
       const isSourceCode = ['.js', '.jsx', '.ts', '.tsx', '.py', '.rb', '.go', '.java', '.c', '.cpp', '.cs', '.php', '.rs', '.html', '.css'].includes(ext);
       const isConfigOrDeps = ['package.json', 'requirements.txt', 'Cargo.toml', 'go.mod', 'pom.xml', 'build.gradle', 'Gemfile', 'composer.json', 'Pipfile', 'pyproject.toml', 'tsconfig.json', 'next.config.js'].includes(file);
       const isDoc = ext === '.md' || file.endsWith('.md');
@@ -78,7 +73,7 @@ export async function getRepoFiles(dir: string, baseDir: string = dir): Promise<
       if (isSourceCode || isConfigOrDeps || isDoc || isDockerCI || isJsonYml || isEnvExample) {
         try {
           const content = fs.readFileSync(filePath, 'utf-8');
-          const relativePath = path.relative(baseDir, filePath).replace(/\\/g, '/'); // Normalize paths
+          const relativePath = path.relative(baseDir, filePath).replace(/\\/g, '/');
           results.push({ path: relativePath, content });
         } catch (error) {
           console.error(`Error reading file ${filePath}:`, error);

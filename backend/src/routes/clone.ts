@@ -1,10 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { cloneRepo, getRepoFiles } from '../../../lib/github';
-import { VectorStore, chunkText } from '../../../lib/vectorStore';
-import { FileNode } from '../../../types';
+import { Router, Request, Response } from 'express';
+import { cloneRepo, getRepoFiles } from '../services/github';
+import { VectorStore, chunkText } from '../services/vectorStore';
+import { FileNode } from '../types';
 import path from 'path';
 
-// Helper to convert flat file paths to a nested tree structure for react-arborist
+const router = Router();
+
 function buildFileTree(files: { path: string }[]): FileNode[] {
   const root: FileNode = { id: 'root', name: 'root', isDir: true, children: [] };
 
@@ -33,36 +34,29 @@ function buildFileTree(files: { path: string }[]): FileNode[] {
   return root.children || [];
 }
 
-export async function POST(req: NextRequest) {
+router.post('/', async (req: Request, res: Response) => {
   try {
-    const { url } = await req.json();
+    const { url } = req.body;
 
     if (!url) {
-      return NextResponse.json({ error: 'GitHub URL is required' }, { status: 400 });
+      return res.status(400).json({ error: 'GitHub URL is required' });
     }
 
-    // 1. Clone Repo
     const cloneDir = await cloneRepo(url);
-
-    // 2. Walk file tree and get contents
     const files = await getRepoFiles(cloneDir);
 
-    // 3. Chunk and embed
-    // For a weekend project, we only process files under a certain size (100KB) to avoid memory/API limits
     const validFiles = files.filter(f => f.content.length < 100000);
     
-    // Clear previous vector store to simulate per-session
     VectorStore.clear();
 
     const documentsToAdd = [];
     let totalChunks = 0;
     
-    // Tiering logic
     const isTier1 = (path: string) => {
       const lower = path.toLowerCase();
       if (['readme.md', 'package.json', 'requirements.txt', 'dockerfile'].includes(lower)) return true;
       if (['index.js', 'main.py', 'app.py', 'server.js', 'index.ts'].includes(lower)) return true;
-      if (!path.includes('/')) return true; // root directory
+      if (!path.includes('/')) return true; 
       return false;
     };
 
@@ -81,11 +75,11 @@ export async function POST(req: NextRequest) {
     };
 
     for (const file of validFiles) {
-      if (documentsToAdd.length >= 500) break; // Global cap
+      if (documentsToAdd.length >= 500) break;
 
-      let maxChunks = 20; // Default cap
+      let maxChunks = 20;
       if (isTier1(file.path)) {
-        maxChunks = 999; // Essentially no cap for critical files
+        maxChunks = 999; 
       } else if (isTier3(file.path)) {
         maxChunks = 2;
       } else if (isTier2(file.path)) {
@@ -95,7 +89,6 @@ export async function POST(req: NextRequest) {
       const allChunks = chunkText(file.content, file.path);
       const chunksToKeep = allChunks.slice(0, maxChunks);
       
-      // Prevent exceeding the global cap precisely
       const spaceLeft = 500 - documentsToAdd.length;
       const chunks = chunksToKeep.slice(0, spaceLeft);
 
@@ -108,10 +101,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // --- Generate synthetic REPO SUMMARY chunk (Bug 2 fix) ---
     const repoName = url.split('/').pop()?.replace('.git', '') || 'unknown-repo';
     
-    // Build a folder tree string from file paths
     const allPaths = files.map(f => f.path);
     const folderSet = new Set<string>();
     allPaths.forEach(p => {
@@ -127,12 +118,10 @@ export async function POST(req: NextRequest) {
       return '  '.repeat(depth) + (name?.includes('.') ? '📄 ' : '📁 ') + name;
     }).join('\n');
 
-    // Detect key files
     const entryFiles = allPaths.filter(p => /^(index\.[jt]sx?|main\.py|app\.py|server\.[jt]s|manage\.py)$/.test(path.basename(p)));
     const depFiles = allPaths.filter(p => /^(package\.json|requirements\.txt|Cargo\.toml|go\.mod|Pipfile|pyproject\.toml|Gemfile|composer\.json|pom\.xml|build\.gradle)$/.test(path.basename(p)));
     const configFiles = allPaths.filter(p => /^(tsconfig\.json|next\.config\.[jt]s|Dockerfile|docker-compose\.ya?ml|\.env\.example)$/.test(path.basename(p)));
     
-    // File type summary
     const extCounts: Record<string, number> = {};
     allPaths.forEach(p => {
       const ext = path.extname(p).toLowerCase() || '(no ext)';
@@ -158,24 +147,22 @@ KEY FILES DETECTED:
 - Total source files by type: ${fileTypeSummary}
 `;
 
-    // Insert as the very first document
     documentsToAdd.unshift({
       text: repoSummaryText,
       metadata: { path: '__REPO_SUMMARY__', chunkIndex: 0, totalChunks: 1 }
     });
 
-    // Add to vector store (this could take a while for large repos, in production we'd do this async)
     console.log(`Indexing ${documentsToAdd.length} chunks across ${validFiles.length} files (includes 1 repo summary)...`);
     
-    // Process all chunks using the new batching logic inside VectorStore.addDocuments
     await VectorStore.addDocuments(documentsToAdd);
     
-    // 4. Build file tree for the frontend
     const fileTree = buildFileTree(files);
 
-    return NextResponse.json({ success: true, fileTree });
+    res.json({ success: true, fileTree });
   } catch (error: any) {
     console.error('Clone Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    res.status(500).json({ error: error.message });
   }
-}
+});
+
+export default router;
