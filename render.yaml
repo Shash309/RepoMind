@@ -1,0 +1,28 @@
+# render.yaml — Infrastructure-as-Code for Render deployment
+# Docs: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: repomind-backend
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      - key: GROQ_API_KEY
+        sync: false          # Set manually in Render dashboard
+      - key: COHERE_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: FRONTEND_URL
+        sync: false          # e.g. https://repomind.vercel.app
+    disk:
+      name: repomind-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1

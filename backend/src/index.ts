@@ -9,28 +9,51 @@ import readmeRoutes from './routes/readme';
 dotenv.config();
 
 const app = express();
-const port = process.env.PORT || 3001;
+const port = parseInt(process.env.PORT || '3001', 10);
 
-app.use(cors());
+// --- CORS ---
+// Allow requests from the Vercel frontend and localhost in development.
+const allowedOrigins = [
+  'http://localhost:3000',
+  process.env.FRONTEND_URL, // e.g. https://repomind.vercel.app
+].filter(Boolean) as string[];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (curl, Render health checks, etc.)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      callback(new Error(`CORS: Origin ${origin} not allowed`));
+    },
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
+  })
+);
+
 app.use(express.json({ limit: '50mb' }));
 
-// Health Check
-app.get('/health', (req, res) => {
+// --- Health Check (required by Render) ---
+app.get('/health', (_req, res) => {
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Routes
+// --- Routes ---
 app.use('/api/clone', cloneRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/file', fileRoutes);
 app.use('/api/generate-readme', readmeRoutes);
 
-// Centralized error handling
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error(err.stack);
-  res.status(500).json({ error: err.message || 'Internal Server Error' });
+// --- Centralized Error Handler ---
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error('[Error]', err.message || err);
+  res.status(err.status || 500).json({ error: err.message || 'Internal Server Error' });
 });
 
-app.listen(port, () => {
-  console.log(`Backend server running on port ${port}`);
+// --- Start ---
+app.listen(port, '0.0.0.0', () => {
+  console.log(`✅ RepoMind backend running on port ${port}`);
+  console.log(`   Environment : ${process.env.NODE_ENV || 'development'}`);
+  console.log(`   CORS origins: ${allowedOrigins.join(', ')}`);
 });

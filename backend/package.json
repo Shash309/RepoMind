@@ -1,33 +1,33 @@
 {
-  "name": "backend",
+  "name": "repomind-backend",
   "version": "1.0.0",
-  "main": "index.js",
+  "description": "RepoMind Express API backend",
+  "main": "dist/index.js",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
+    "build": "tsc --project tsconfig.json",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
-    "build": "tsc"
+    "lint": "tsc --noEmit"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
   "dependencies": {
-    "better-sqlite3": "^12.10.0",
+    "better-sqlite3": "^9.6.0",
     "cohere-ai": "^8.0.0",
-    "cors": "^2.8.6",
-    "dotenv": "^17.4.2",
-    "express": "^5.2.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
     "groq-sdk": "^1.2.0",
-    "isomorphic-git": "^1.38.0",
-    "openai": "^6.38.0"
+    "isomorphic-git": "^1.27.1",
+    "openai": "^4.77.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.6",
-    "@types/node": "^25.8.0",
-    "ts-node": "^10.9.2",
-    "tsx": "^4.22.1",
-    "typescript": "^6.0.3"
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.17.0",
+    "tsx": "^4.19.1",
+    "typescript": "^5.7.2"
   }
 }
