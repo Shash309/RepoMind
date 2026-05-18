@@ -38,8 +38,8 @@ export default function FileViewer({ filePath }: FileViewerProps) {
         if (!res.ok) throw new Error('File not found or could not be read.');
         const text = await res.text();
         setContent(text);
-      } catch (e: any) {
-        setError(e.message);
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : 'File not found or could not be read.');
       } finally {
         setLoading(false);
       }

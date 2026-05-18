@@ -79,7 +79,6 @@ export default function IngestionLoader({ currentStep, repoUrl, error }: Ingesti
             const stepIndex = STEP_ORDER.indexOf(step.key);
             const isCompleted = stepIndex < currentIndex;
             const isActive = step.key === currentStep;
-            const isPending = stepIndex > currentIndex;
 
             return (
               <motion.div

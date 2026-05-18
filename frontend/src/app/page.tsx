@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import dynamic from 'next/dynamic';
 
 import SplashScreen from '../components/SplashScreen';
 import LandingPage from '../components/LandingPage';
 import IngestionLoader, { IngestionStep } from '../components/IngestionLoader';
-import AppLayout from '../components/AppLayout';
+
 import { FileNode } from '../types';
 
 // Dynamically import heavy components to avoid SSR issues
@@ -58,8 +58,8 @@ export default function Home() {
 
       await delay(800);
       setAppState('app');
-    } catch (err: any) {
-      setIngestionError(err.message);
+    } catch (err: unknown) {
+      setIngestionError(err instanceof Error ? err.message : 'An unexpected error occurred');
     }
   };
 
