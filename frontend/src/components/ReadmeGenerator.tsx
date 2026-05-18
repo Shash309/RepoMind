@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { FileText, Copy, Check, Download, Sparkles, X } from 'lucide-react';
 
 interface ReadmeGeneratorProps {

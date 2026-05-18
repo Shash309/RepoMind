@@ -20,7 +20,7 @@ export interface VectorDocument {
   text: string;
   metadata: {
     path: string;
-    [key: string]: any;
+    [key: string]: unknown;
   };
   embedding?: number[];
 }

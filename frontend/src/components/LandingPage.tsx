@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { GitBranch, ArrowRight, Zap, Brain, Search, FileCode } from 'lucide-react';
 
 const TYPEWRITER_TEXTS = [
@@ -264,7 +264,7 @@ export default function LandingPage({ onSubmit }: LandingPageProps) {
         className="absolute bottom-8 left-0 right-0 px-8"
       >
         <div className="max-w-3xl mx-auto grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {FEATURES.map(({ icon: Icon, title, desc }, i) => (
+          {FEATURES.map(({ icon: Icon, title, desc }) => (
             <motion.div
               key={title}
               className="glass rounded-xl p-4 text-center group cursor-default"
