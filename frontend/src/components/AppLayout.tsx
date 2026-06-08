@@ -249,7 +249,7 @@ export default function AppLayout({ fileTree, repoUrl, onReset }: AppLayoutProps
                 transition={{ duration: 0.15 }}
                 style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
               >
-                <FileViewer filePath={selectedFile} />
+                <FileViewer filePath={selectedFile} repoUrl={repoUrl} />
               </motion.div>
             ) : (
               <motion.div
@@ -283,7 +283,7 @@ export default function AppLayout({ fileTree, repoUrl, onReset }: AppLayoutProps
             borderLeft: '1px solid rgba(255,255,255,0.04)',
           }}
         >
-          <ChatInterface activeFile={selectedFile} />
+          <ChatInterface activeFile={selectedFile} repoUrl={repoUrl} />
         </div>
       </div>
     </div>

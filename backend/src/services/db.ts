@@ -26,7 +26,40 @@ db.exec(`
     metadata TEXT NOT NULL,
     embedding TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS embedding_cache (
+    file_hash TEXT PRIMARY KEY,
+    file_path TEXT,
+    repo_url TEXT,
+    embeddings TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
+
+export function getCachedEmbeddings(fileHash: string): number[][] | null {
+  const stmt = db.prepare('SELECT embeddings FROM embedding_cache WHERE file_hash = ?');
+  const row = stmt.get(fileHash) as { embeddings: string } | undefined;
+  if (row) {
+    try {
+      return JSON.parse(row.embeddings);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+export function cacheEmbeddings(
+  fileHash: string,
+  filePath: string,
+  repoUrl: string,
+  embeddings: number[][]
+) {
+  const stmt = db.prepare(
+    'INSERT OR REPLACE INTO embedding_cache (file_hash, file_path, repo_url, embeddings) VALUES (?, ?, ?, ?)'
+  );
+  stmt.run(fileHash, filePath, repoUrl, JSON.stringify(embeddings));
+}
 
 export function insertDocument(
   id: string,

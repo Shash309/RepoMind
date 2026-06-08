@@ -1,0 +1,71 @@
+
+> repomind-backend@1.0.0 dev
+> tsx watch src/index.ts
+
+COHERE_API_KEY: ✅ loaded
+GROQ_API_KEY: ✅ loaded
+[DB] Database path: E:\visual studio code\repo-mind\backend\src\data\repomind.db
+✅ RepoMind backend running on port 3001
+   Environment : development
+   CORS origins: http://localhost:3000
+Loaded actual content for: src/main.js 4006 chars
+Loaded actual content for: README.md 1712 chars
+Loaded actual content for: styles.css 2774 chars
+6:51:19 pm [tsx] change in ./src\routes\act.ts Restarting...
+cCOHERE_API_KEY: ✅ loaded
+GROQ_API_KEY: ✅ loaded
+[DB] Database path: E:\visual studio code\repo-mind\backend\src\data\repomind.db
+6:51:26 pm [tsx] change in ./src\routes\act.ts Rerunning...
+cCOHERE_API_KEY: ✅ loaded
+GROQ_API_KEY: ✅ loaded
+[DB] Database path: E:\visual studio code\repo-mind\backend\src\data\repomind.db
+✅ RepoMind backend running on port 3001
+   Environment : development
+   CORS origins: http://localhost:3000
+6:51:35 pm [tsx] change in ./src\routes\act.ts Restarting...
+cCOHERE_API_KEY: ✅ loaded
+GROQ_API_KEY: ✅ loaded
+[DB] Database path: E:\visual studio code\repo-mind\backend\src\data\repomind.db
+✅ RepoMind backend running on port 3001
+   Environment : development
+   CORS origins: http://localhost:3000
+6:52:13 pm [tsx] change in ./src\routes\act.ts Restarting...
+cCOHERE_API_KEY: ✅ loaded
+GROQ_API_KEY: ✅ loaded
+[DB] Database path: E:\visual studio code\repo-mind\backend\src\data\repomind.db
+✅ RepoMind backend running on port 3001
+   Environment : development
+   CORS origins: http://localhost:3000
+Loaded actual content for: src/main.js 4006 chars
+Loaded actual content for: README.md 1712 chars
+Loaded actual content for: styles.css 2774 chars
+Loaded actual content for: src/snake-game.js 3020 chars
+✅ Anchor verified for: hitsWall
+✅ Anchor verified for: hitsWall
+Loaded actual content for: src/main.js 4006 chars
+Loaded actual content for: README.md 1712 chars
+Loaded actual content for: styles.css 2774 chars
+Loaded actual content for: src/snake-game.js 3020 chars
+✅ Anchor verified for: hitsWall
+✅ Anchor verified for: hitsWall
+Applying: insert_before in hitsWall to src/snake-game.js
+✅ Exact match found
+Done: hitsWall
+Detected parameters (excluded from orphan check): [
+  'random',
+  'state',
+  'nextDirection',
+  'cell',
+  'gridSize',
+  'snake',
+  '(segment',
+  'snake.map((segment'
+]
+6:53:28 pm [tsx] change in ./src\routes\act.ts Restarting...
+cCOHERE_API_KEY: ✅ loaded
+GROQ_API_KEY: ✅ loaded
+[DB] Database path: E:\visual studio code\repo-mind\backend\src\data\repomind.db
+7:00:53 pm [tsx] change in ./src\services\llm.ts Rerunning...
+cCOHERE_API_KEY: ✅ loaded
+GROQ_API_KEY: ✅ loaded
+[DB] Database path: E:\visual studio code\repo-mind\backend\src\data\repomind.db

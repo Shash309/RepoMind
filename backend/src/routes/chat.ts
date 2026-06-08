@@ -8,7 +8,7 @@ const normalize = (p: string | null | undefined) => (p ?? '').replace(/\\/g, '/'
 
 router.post('/', async (req: Request, res: Response): Promise<any> => {
   try {
-    const { messages, activeFile }: { messages: ChatMessage[]; activeFile?: string | null } = req.body;
+    const { messages, activeFile, skipClassification }: { messages: ChatMessage[]; activeFile?: string | null; skipClassification?: boolean } = req.body;
 
     if (!messages || messages.length === 0) {
       return res.status(400).send('No messages provided');
@@ -18,9 +18,57 @@ router.post('/', async (req: Request, res: Response): Promise<any> => {
     const userMessage = lastMessage.content;
     const normalizedActiveFile = normalize(activeFile);
 
+    if (!skipClassification) {
+      const isActionRequest = (msg: string) => {
+        const actionVerbs = [
+          'add', 'remove', 'delete', 'refactor', 'rename', 'move',
+          'create', 'update', 'fix', 'replace', 'convert', 'migrate',
+          'make', 'change', 'modify', 'rewrite', 'extract', 'split',
+          'merge', 'optimize', 'clean', 'format', 'implement'
+        ];
+        const lower = msg.toLowerCase();
+        return actionVerbs.some(verb => lower.startsWith(verb) || 
+          lower.includes(` ${verb} `));
+      };
+
+      const isQuestion = (msg: string): boolean => {
+        const questionIndicators = ['how', 'why', 'what', 'where', 'who', 'explain', 'can you', 'is there', 'is it', 'should we', 'would you', 'could you', '?'];
+        const lower = msg.toLowerCase();
+        return questionIndicators.some(indicator => lower.includes(indicator));
+      };
+
+      const hasAction = isActionRequest(userMessage);
+      const hasQuestion = isQuestion(userMessage);
+
+      if (hasAction && hasQuestion) {
+        return res.json({ isAction: true, status: 'unsure', message: userMessage });
+      } else if (hasAction) {
+        return res.json({ isAction: true, status: 'action', message: userMessage });
+      }
+    }
+
+    console.log('Chat received activeFile:', activeFile);
+
     let activeFileChunks: any[] = [];
-    if (normalizedActiveFile) {
-      activeFileChunks = VectorStore.getByFilePath(normalizedActiveFile);
+    if (activeFile) {
+      const allDocs = VectorStore.getAll();
+      if (allDocs.length > 0) {
+        console.log('Vector store sample path:', allDocs[0]?.metadata?.path);
+      } else {
+        console.log('Vector store is empty!');
+      }
+
+      activeFileChunks = allDocs
+        .filter(doc => normalize(doc.metadata.path) === normalize(activeFile))
+        .map(doc => ({ ...doc, score: 1.0 }));
+
+      console.log(`Chunks found for active file: ${activeFileChunks.length}`);
+
+      if (activeFileChunks.length === 0) {
+        const allPaths = [...new Set(allDocs.map(c => normalize(c.metadata.path)))];
+        console.log('All stored paths:', allPaths);
+        console.log('Looking for:', normalize(activeFile));
+      }
     }
 
     const isFolderQuestion = /folder|structure|directory|layout|organized|overview|architecture|file tree/i.test(userMessage);

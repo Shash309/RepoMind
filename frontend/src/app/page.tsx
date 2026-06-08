@@ -21,6 +21,7 @@ export default function Home() {
   const [repoUrl, setRepoUrl] = useState('');
   const [ingestionStep, setIngestionStep] = useState<IngestionStep>('connecting');
   const [ingestionError, setIngestionError] = useState('');
+  const [ingestionDetail, setIngestionDetail] = useState('');
 
   const handleSplashComplete = () => {
     setAppState('landing');
@@ -31,10 +32,7 @@ export default function Home() {
     setIngestionError('');
     setAppState('loading');
     setIngestionStep('connecting');
-
-    // Animate steps as we go
-    await delay(400);
-    setIngestionStep('cloning');
+    setIngestionDetail('Connecting to GitHub...');
 
     try {
       const res = await fetch('/api/clone', {
@@ -43,21 +41,56 @@ export default function Home() {
         body: JSON.stringify({ url }),
       });
 
-      // Show parsing step partway through
-      setTimeout(() => setIngestionStep('parsing'), 1500);
-      setTimeout(() => setIngestionStep('embedding'), 4000);
-
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to clone repository');
+        throw new Error(data.error || 'Failed to initiate repository clone');
       }
 
-      setIngestionStep('ready');
-      setFileTree(data.fileTree);
+      const jobId = data.jobId;
+      if (!jobId) {
+        throw new Error('No jobId returned from server');
+      }
 
-      await delay(800);
-      setAppState('app');
+      // Poll for progress every 2 seconds
+      await new Promise<void>((resolve, reject) => {
+        const interval = setInterval(async () => {
+          try {
+            const pollRes = await fetch(`/api/clone/status/${jobId}`);
+            if (!pollRes.ok) {
+              throw new Error('Failed to poll repository status');
+            }
+            const statusData = await pollRes.json();
+
+            if (statusData.status && statusData.status !== 'complete' && statusData.status !== 'error') {
+              setIngestionStep(statusData.status);
+              if (statusData.step) {
+                setIngestionDetail(statusData.step);
+              }
+            }
+
+            if (statusData.status === 'complete') {
+              clearInterval(interval);
+              setIngestionStep('ready');
+              setFileTree(statusData.fileTree || []);
+              setTimeout(() => {
+                setAppState('app');
+                resolve();
+              }, 800);
+            }
+
+            if (statusData.status === 'error') {
+              clearInterval(interval);
+              setIngestionError(statusData.error || 'Ingestion failed');
+              reject(new Error(statusData.error || 'Ingestion failed'));
+            }
+          } catch (pollErr: any) {
+            clearInterval(interval);
+            setIngestionError(pollErr.message);
+            reject(pollErr);
+          }
+        }, 2000);
+      });
     } catch (err: unknown) {
       setIngestionError(err instanceof Error ? err.message : 'An unexpected error occurred');
     }
@@ -87,6 +120,7 @@ export default function Home() {
           currentStep={ingestionStep}
           repoUrl={repoUrl}
           error={ingestionError}
+          stepDetail={ingestionDetail}
         />
       )}
 

@@ -1,12 +1,11 @@
+import './prestart';
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import cloneRoutes from './routes/clone';
 import chatRoutes from './routes/chat';
 import fileRoutes from './routes/file';
 import readmeRoutes from './routes/readme';
-
-dotenv.config();
+import actRoutes from './routes/act';
 
 const app = express();
 const port = parseInt(process.env.PORT || '3001', 10);
@@ -44,6 +43,7 @@ app.use('/api/clone', cloneRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/file', fileRoutes);
 app.use('/api/generate-readme', readmeRoutes);
+app.use('/api/act', actRoutes);
 
 // --- Centralized Error Handler ---
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
@@ -52,8 +52,11 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 });
 
 // --- Start ---
-app.listen(port, '0.0.0.0', () => {
+const server = app.listen(port, '0.0.0.0', () => {
   console.log(`✅ RepoMind backend running on port ${port}`);
   console.log(`   Environment : ${process.env.NODE_ENV || 'development'}`);
   console.log(`   CORS origins: ${allowedOrigins.join(', ')}`);
 });
+
+server.timeout = 300000; // 5 minutes
+server.keepAliveTimeout = 300000;

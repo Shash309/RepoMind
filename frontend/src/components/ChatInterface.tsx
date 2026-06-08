@@ -2,10 +2,13 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Copy, Check, GitBranch } from 'lucide-react';
+import { Send, Copy, Check, GitBranch, AlertTriangle, Loader2 } from 'lucide-react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/cjs/styles/prism';
 import { ChatMessage } from '../types';
+import { useActMode } from '../hooks/useActMode';
+import ActModeCard from './ActModeCard';
+import DiffViewer from './DiffViewer';
 
 const SUGGESTIONS = [
   "Where is authentication handled?",
@@ -93,9 +96,11 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
 
 interface ChatInterfaceProps {
   activeFile?: string | null;
+  repoUrl: string;
 }
 
-export default function ChatInterface({ activeFile }: ChatInterfaceProps) {
+export default function ChatInterface({ activeFile, repoUrl }: ChatInterfaceProps) {
+  const actMode = useActMode();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [localActiveFile, setLocalActiveFile] = useState<string | null>(activeFile || null);
   const [input, setInput] = useState('');
@@ -109,7 +114,7 @@ export default function ChatInterface({ activeFile }: ChatInterfaceProps) {
   }, [messages]);
 
   useEffect(() => {
-    if (activeFile) setLocalActiveFile(activeFile);
+    setLocalActiveFile(activeFile ?? null);
   }, [activeFile]);
 
   // Auto-resize textarea
@@ -120,7 +125,7 @@ export default function ChatInterface({ activeFile }: ChatInterfaceProps) {
     }
   }, [input]);
 
-  const sendMessage = async (text: string) => {
+  const sendMessage = async (text: string, skipClassify = false) => {
     if (!text.trim() || isLoading) return;
 
     const userMsg: ChatMessage = { role: 'user', content: text };
@@ -132,20 +137,44 @@ export default function ChatInterface({ activeFile }: ChatInterfaceProps) {
     const assistantPlaceholder: ChatMessage = { role: 'assistant', content: '' };
     setMessages(prev => [...prev, assistantPlaceholder]);
 
+    console.log('Sending message with activeFile:', localActiveFile);
+
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: newMessages, activeFile: localActiveFile }),
+        body: JSON.stringify({
+          messages: newMessages,
+          activeFile: localActiveFile ?? null,
+          skipClassification: skipClassify,
+        }),
       });
 
-      if (!res.ok || !res.body) throw new Error('Request failed');
+      if (!res.ok) throw new Error('Request failed');
+
+      const contentType = res.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const json = await res.json();
+        setIsLoading(false);
+        setMessages(prev => prev.slice(0, -1));
+
+        if (json.isAction) {
+          if (json.status === 'action') {
+            actMode.startPlanning(text, repoUrl);
+          } else if (json.status === 'unsure') {
+            actMode.setUserRequest(text);
+            actMode.setStatus('unsure');
+          }
+          return;
+        }
+      }
 
       if (res.headers.get('x-fallback-used') === 'true') {
         setFallbackToast(true);
         setTimeout(() => setFallbackToast(false), 5000);
       }
 
+      if (!res.body) throw new Error('No response body');
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let done = false;
@@ -324,6 +353,208 @@ export default function ChatInterface({ activeFile }: ChatInterfaceProps) {
               </div>
             </motion.div>
           ))}
+
+          {actMode.status === 'planning' && (
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-start gap-3 w-full"
+            >
+              <div className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center mt-0.5"
+                style={{ background: 'rgba(124,58,237,0.2)', border: '1px solid rgba(124,58,237,0.3)' }}
+              >
+                <GitBranch className="w-3.5 h-3.5 text-violet-400" />
+              </div>
+              <div className="w-full max-w-[85%] rounded-2xl px-4 py-3 rounded-tl-sm bg-[#11111c]/80 border border-white/5 backdrop-blur-md flex items-center gap-3">
+                <Loader2 className="w-4 h-4 text-violet-400 animate-spin" />
+                <span className="text-xs font-semibold text-violet-300">Analyzing codebase...</span>
+              </div>
+            </motion.div>
+          )}
+
+          {actMode.status === 'unsure' && (
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-start gap-3 w-full"
+            >
+              <div className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center mt-0.5"
+                style={{ background: 'rgba(124,58,237,0.2)', border: '1px solid rgba(124,58,237,0.3)' }}
+              >
+                <GitBranch className="w-3.5 h-3.5 text-violet-400" />
+              </div>
+              <div className="w-full max-w-[85%] rounded-2xl p-4 rounded-tl-sm bg-[#11111c]/85 border border-violet-500/30 shadow-lg backdrop-blur-md flex flex-col gap-3">
+                <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider">Clarification Required</p>
+                <p className="text-sm text-gray-200 leading-relaxed">
+                  Did you want to ask a question about this, or make this change directly to your repository files?
+                </p>
+                <div className="flex items-center gap-2.5 mt-1">
+                  <button
+                    onClick={() => {
+                      const req = actMode.userRequest;
+                      actMode.cancel();
+                      sendMessage(req, true);
+                    }}
+                    className="flex-1 py-2 px-3 rounded-xl text-xs font-semibold border border-white/10 text-gray-300 hover:text-white hover:bg-white/5 transition-all"
+                  >
+                    Ask about this
+                  </button>
+                  <button
+                    onClick={() => actMode.startPlanning(actMode.userRequest, repoUrl)}
+                    className="flex-1 py-2 px-3 rounded-xl text-xs font-semibold text-white transition-all shadow-md"
+                    style={{ background: 'linear-gradient(135deg, #7c3aed, #06b6d4)' }}
+                  >
+                    Make this change
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {actMode.status === 'plan_ready' && actMode.plan && (
+            <div className="w-full">
+              <ActModeCard
+                plan={actMode.plan}
+                repoUrl={repoUrl}
+                onExecute={() => actMode.generateCode(repoUrl)}
+                onCancel={() => actMode.cancel()}
+                onEditPlan={(upPlan) => actMode.editPlan(upPlan)}
+              />
+            </div>
+          )}
+
+          {actMode.status === 'generating' && (
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-start gap-3 w-full"
+            >
+              <div className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center mt-0.5"
+                style={{ background: 'rgba(124,58,237,0.2)', border: '1px solid rgba(124,58,237,0.3)' }}
+              >
+                <GitBranch className="w-3.5 h-3.5 text-violet-400" />
+              </div>
+              <div className="w-full max-w-[85%] rounded-2xl px-4 py-3 rounded-tl-sm bg-[#11111c]/80 border border-white/5 backdrop-blur-md flex items-center gap-3">
+                <Loader2 className="w-4 h-4 text-violet-400 animate-spin" />
+                <span className="text-xs font-semibold text-violet-300">Generating changes...</span>
+              </div>
+            </motion.div>
+          )}
+
+          {actMode.status === 'diff_ready' && (
+            <div className="w-full">
+              <DiffViewer
+                diffs={actMode.diffs}
+                warnings={actMode.warnings}
+                isConfirmed={false}
+                rollbackLabel="Discard Changes"
+                acceptLabel="Confirm & Save"
+                onRollback={() => actMode.cancel()}
+                onAccept={() => actMode.executePlan(repoUrl)}
+              />
+            </div>
+          )}
+
+          {actMode.status === 'executing' && (
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-start gap-3 w-full"
+            >
+              <div className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center mt-0.5"
+                style={{ background: 'rgba(124,58,237,0.2)', border: '1px solid rgba(124,58,237,0.3)' }}
+              >
+                <GitBranch className="w-3.5 h-3.5 text-violet-400" />
+              </div>
+              <div className="w-full max-w-[85%] rounded-2xl px-4 py-3 rounded-tl-sm bg-[#11111c]/80 border border-white/5 backdrop-blur-md flex items-center gap-3">
+                <Loader2 className="w-4 h-4 text-violet-400 animate-spin" />
+                <span className="text-xs font-semibold text-violet-300">Writing files to disk...</span>
+              </div>
+            </motion.div>
+          )}
+
+          {actMode.status === 'complete' && (
+            <div className="w-full">
+              <DiffViewer
+                diffs={actMode.diffs}
+                warnings={actMode.warnings}
+                isConfirmed={true}
+                rollbackLabel="↩ Rollback"
+                acceptLabel="✓ Done"
+                onRollback={() => actMode.rollbackChanges()}
+                onAccept={() => actMode.cancel()}
+              />
+            </div>
+          )}
+
+          {actMode.status === 'rolled_back' && (
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-start gap-3 w-full"
+            >
+              <div className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center mt-0.5"
+                style={{ background: 'rgba(124,58,237,0.2)', border: '1px solid rgba(124,58,237,0.3)' }}
+              >
+                <GitBranch className="w-3.5 h-3.5 text-violet-400" />
+              </div>
+              <div className="w-full max-w-[85%] rounded-2xl p-4 rounded-tl-sm bg-[#11111c]/80 border border-amber-500/20 backdrop-blur-md flex flex-col gap-2">
+                <p className="text-xs text-amber-400 font-bold tracking-wider uppercase">Rolled Back</p>
+                <p className="text-sm text-gray-300 leading-normal">
+                  All changes have been successfully reverted on disk.
+                </p>
+                <button
+                  onClick={() => actMode.cancel()}
+                  className="mt-1 self-start py-1.5 px-3 rounded-lg text-xs font-semibold border border-white/10 text-gray-300 hover:text-white hover:bg-white/5 transition-all"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </motion.div>
+          )}
+
+          {actMode.status === 'error' && (
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-start gap-3 w-full"
+            >
+              <div className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center mt-0.5"
+                style={{ background: 'rgba(239, 68, 68, 0.2)', border: '1px solid rgba(239, 68, 68, 0.3)' }}
+              >
+                <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
+              </div>
+              <div className="w-full max-w-[85%] rounded-2xl p-4 rounded-tl-sm bg-red-500/10 border border-red-500/20 backdrop-blur-md flex flex-col gap-2.5">
+                <p className="text-xs text-red-400 font-bold tracking-wider uppercase">Error</p>
+                <p className="text-xs text-red-200 leading-normal">
+                  {actMode.error || 'An unexpected error occurred.'}
+                </p>
+                <div className="flex items-center gap-2 mt-1">
+                  <button
+                    onClick={() => actMode.cancel()}
+                    className="py-1 px-3 rounded-lg text-xs font-semibold border border-white/10 text-gray-300 hover:text-white hover:bg-white/5 transition-all"
+                  >
+                    Dismiss
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (actMode.rollbackId) {
+                        actMode.rollbackChanges();
+                      } else if (actMode.plan) {
+                        actMode.executePlan(repoUrl);
+                      } else {
+                        actMode.startPlanning(actMode.userRequest, repoUrl);
+                      }
+                    }}
+                    className="py-1 px-3 rounded-lg text-xs font-semibold text-white transition-all"
+                    style={{ background: 'linear-gradient(135deg, #7c3aed, #06b6d4)' }}
+                  >
+                    Retry
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
         </AnimatePresence>
         <div ref={messagesEndRef} />
       </div>
@@ -369,19 +600,19 @@ export default function ChatInterface({ activeFile }: ChatInterfaceProps) {
             onKeyDown={handleKeyDown}
             placeholder="Ask anything about the codebase..."
             rows={1}
-            disabled={isLoading}
+            disabled={isLoading || actMode.status !== 'idle'}
             className="w-full px-4 pt-3.5 pb-3 pr-12 bg-transparent text-gray-200 text-sm placeholder-gray-600 focus:outline-none resize-none font-sans"
             style={{ maxHeight: '120px' }}
           />
           <motion.button
             onClick={() => sendMessage(input)}
-            disabled={isLoading || !input.trim()}
+            disabled={isLoading || !input.trim() || actMode.status !== 'idle'}
             className="absolute right-2 bottom-2 w-8 h-8 rounded-lg flex items-center justify-center transition-all"
             style={{
-              background: input.trim() && !isLoading ? 'linear-gradient(135deg, #7c3aed, #06b6d4)' : 'rgba(255,255,255,0.04)',
+              background: input.trim() && !isLoading && actMode.status === 'idle' ? 'linear-gradient(135deg, #7c3aed, #06b6d4)' : 'rgba(255,255,255,0.04)',
             }}
-            whileHover={input.trim() && !isLoading ? { scale: 1.05 } : {}}
-            whileTap={input.trim() && !isLoading ? { scale: 0.95 } : {}}
+            whileHover={input.trim() && !isLoading && actMode.status === 'idle' ? { scale: 1.05 } : {}}
+            whileTap={input.trim() && !isLoading && actMode.status === 'idle' ? { scale: 0.95 } : {}}
           >
             <Send className="w-3.5 h-3.5 text-white" />
           </motion.button>

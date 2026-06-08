@@ -1,0 +1,17 @@
+
+> repomind-backend@1.0.0 dev
+> tsx watch src/index.ts
+
+COHERE_API_KEY: ✅ loaded
+GROQ_API_KEY: ✅ loaded
+[DB] Database path: E:\visual studio code\repo-mind\backend\src\data\repomind.db
+✅ RepoMind backend running on port 3001
+   Environment : development
+   CORS origins: http://localhost:3000
+7:00:53 pm [tsx] change in ./src\services\llm.ts Restarting...
+cCOHERE_API_KEY: ✅ loaded
+GROQ_API_KEY: ✅ loaded
+[DB] Database path: E:\visual studio code\repo-mind\backend\src\data\repomind.db
+✅ RepoMind backend running on port 3001
+   Environment : development
+   CORS origins: http://localhost:3000

@@ -19,9 +19,10 @@ function getLanguage(filename: string): string {
 
 interface FileViewerProps {
   filePath: string | null;
+  repoUrl: string;
 }
 
-export default function FileViewer({ filePath }: FileViewerProps) {
+export default function FileViewer({ filePath, repoUrl }: FileViewerProps) {
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -34,7 +35,7 @@ export default function FileViewer({ filePath }: FileViewerProps) {
       setError('');
       setContent('');
       try {
-        const res = await fetch(`/api/file?path=${encodeURIComponent(filePath)}`);
+        const res = await fetch(`/api/file?path=${encodeURIComponent(filePath)}&repoId=${encodeURIComponent(repoUrl)}`);
         if (!res.ok) throw new Error('File not found or could not be read.');
         const text = await res.text();
         setContent(text);
@@ -45,7 +46,7 @@ export default function FileViewer({ filePath }: FileViewerProps) {
       }
     };
     fetchFile();
-  }, [filePath]);
+  }, [filePath, repoUrl]);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(content);

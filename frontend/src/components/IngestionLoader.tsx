@@ -24,9 +24,10 @@ interface IngestionLoaderProps {
   currentStep: IngestionStep;
   repoUrl: string;
   error?: string;
+  stepDetail?: string;
 }
 
-export default function IngestionLoader({ currentStep, repoUrl, error }: IngestionLoaderProps) {
+export default function IngestionLoader({ currentStep, repoUrl, error, stepDetail }: IngestionLoaderProps) {
   const currentIndex = STEP_ORDER.indexOf(currentStep);
 
   return (
@@ -149,7 +150,7 @@ export default function IngestionLoader({ currentStep, repoUrl, error }: Ingesti
                       animate={{ opacity: 1 }}
                       className="text-xs text-gray-600 font-mono mt-0.5"
                     >
-                      {step.detail}
+                      {stepDetail || step.detail}
                     </motion.p>
                   )}
                 </div>

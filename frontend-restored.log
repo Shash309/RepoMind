@@ -1,0 +1,16 @@
+
+> repo-mind@0.1.0 dev
+> next dev
+
+  ▲ Next.js 14.2.35
+  - Local:        http://localhost:3000
+
+ ✓ Starting...
+ ✓ Ready in 1888ms
+ ○ Compiling / ...
+ ✓ Compiled / in 3.6s (2684 modules)
+ GET / 200 in 4214ms
+ ✓ Compiled in 283ms (1337 modules)
+ GET / 200 in 59ms
+ ✓ Compiled /favicon.ico in 410ms (1379 modules)
+ GET /favicon.ico 200 in 522ms

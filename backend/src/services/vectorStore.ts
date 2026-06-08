@@ -2,9 +2,18 @@ import { CohereClient } from 'cohere-ai';
 import { VectorDocument } from '../types';
 import { db, insertDocument, getAllDocuments, clearDocuments } from './db';
 
-const cohere = new CohereClient({
-  token: process.env.COHERE_API_KEY || '',
-});
+let cohereInstance: CohereClient | null = null;
+function getCohere() {
+  if (!cohereInstance) {
+    if (!process.env.COHERE_API_KEY) {
+      throw new Error('COHERE_API_KEY is not set in env variables');
+    }
+    cohereInstance = new CohereClient({
+      token: process.env.COHERE_API_KEY,
+    });
+  }
+  return cohereInstance;
+}
 
 export function chunkText(text: string, filePath: string, maxChunkSize: number = 4000, overlap: number = 100): string[] {
   const chunks: string[] = [];
@@ -28,20 +37,20 @@ export function chunkText(text: string, filePath: string, maxChunkSize: number =
   return chunks;
 }
 
-const embedWithRetry = async (chunks: string[], inputType: 'search_document' | 'search_query', retries = 5) => {
-  for (let i = 0; i < retries; i++) {
+const embedBatchWithRetry = async (batch: string[], inputType: 'search_document' | 'search_query', retries = 3) => {
+  for (let attempt = 0; attempt < retries; attempt++) {
     try {
-      const response = await cohere.embed({
-        texts: chunks,
+      const response = await getCohere().embed({
+        texts: batch,
         model: 'embed-english-v3.0',
         inputType: inputType,
       });
       return response.embeddings;
     } catch (err: any) {
       if (err.statusCode === 429) {
-        const delay = Math.pow(2, i) * 2000;
-        console.log(`Rate limited. Retrying in ${delay/1000}s...`);
-        await new Promise(res => setTimeout(res, delay));
+        const backoff = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
+        console.warn(`Rate limited on attempt ${attempt + 1}, waiting ${backoff}ms`);
+        await new Promise(res => setTimeout(res, backoff));
       } else {
         throw err;
       }
@@ -50,22 +59,58 @@ const embedWithRetry = async (chunks: string[], inputType: 'search_document' | '
   throw new Error('Max retries exceeded');
 };
 
-export async function generateEmbeddingsBatch(texts: string[], inputType: 'search_document' | 'search_query'): Promise<number[][]> {
-  const BATCH_SIZE = 20;
-  const allEmbeddings: number[][] = [];
+const getParallelLimit = () => {
+  if (process.env.EMBEDDING_PARALLEL_LIMIT) {
+    const parsed = parseInt(process.env.EMBEDDING_PARALLEL_LIMIT, 10);
+    if (!isNaN(parsed)) return parsed;
+  }
+  return process.env.COHERE_TIER === 'free' ? 3 : 8;
+};
 
+export async function generateEmbeddingsBatch(
+  texts: string[],
+  inputType: 'search_document' | 'search_query',
+  onProgress?: (batchIndex: number, totalBatches: number) => void
+): Promise<number[][]> {
+  const BATCH_SIZE = 10;
+  const PARALLEL_LIMIT = getParallelLimit();
+  
+  const batches: string[][] = [];
   for (let i = 0; i < texts.length; i += BATCH_SIZE) {
-    const batch = texts.slice(i, i + BATCH_SIZE);
+    batches.push(texts.slice(i, i + BATCH_SIZE));
+  }
+
+  const totalBatches = batches.length;
+  const allEmbeddings = new Array<number[]>(texts.length);
+
+  // Process in groups of PARALLEL_LIMIT
+  for (let i = 0; i < batches.length; i += PARALLEL_LIMIT) {
+    const group = batches.slice(i, i + PARALLEL_LIMIT);
     
-    console.log(`Generating embeddings for batch ${Math.floor(i/BATCH_SIZE) + 1}/${Math.ceil(texts.length/BATCH_SIZE)}...`);
-    const embeddings = await embedWithRetry(batch, inputType);
-    
-    if (embeddings && Array.isArray(embeddings)) {
-       allEmbeddings.push(...(embeddings as number[][]));
-    }
-    
-    if (i + BATCH_SIZE < texts.length) {
-      await new Promise(res => setTimeout(res, 1500));
+    const groupResults = await Promise.all(
+      group.map((batch, idx) => embedBatchWithRetry(batch, inputType)
+        .then(result => {
+          const completedBatchIdx = i + idx + 1;
+          if (onProgress) {
+            onProgress(completedBatchIdx, totalBatches);
+          }
+          return result;
+        })
+      )
+    );
+
+    // Store results in correct overall index
+    groupResults.forEach((embeddings, groupIdx) => {
+      const batchStartIndex = (i + groupIdx) * BATCH_SIZE;
+      if (embeddings && Array.isArray(embeddings)) {
+        embeddings.forEach((emb, embIdx) => {
+          allEmbeddings[batchStartIndex + embIdx] = emb as number[];
+        });
+      }
+    });
+
+    if (i + PARALLEL_LIMIT < batches.length) {
+      await new Promise(res => setTimeout(res, 500));
     }
   }
 
@@ -73,7 +118,7 @@ export async function generateEmbeddingsBatch(texts: string[], inputType: 'searc
 }
 
 export async function generateEmbedding(text: string, inputType: 'search_document' | 'search_query'): Promise<number[]> {
-  const embeddings = await embedWithRetry([text], inputType);
+  const embeddings = await embedBatchWithRetry([text], inputType);
   return (embeddings as number[][])[0];
 }
 
@@ -91,9 +136,12 @@ export function cosineSimilarity(vecA: number[], vecB: number[]): number {
 }
 
 export class VectorStore {
-  static async addDocuments(docs: { text: string; metadata: any }[]) {
+  static async addDocuments(
+    docs: { text: string; metadata: any }[],
+    onProgress?: (batchIndex: number, totalBatches: number) => void
+  ) {
     const texts = docs.map(d => d.text);
-    const embeddings = await generateEmbeddingsBatch(texts, 'search_document');
+    const embeddings = await generateEmbeddingsBatch(texts, 'search_document', onProgress);
     
     for (let i = 0; i < docs.length; i++) {
       const id = Math.random().toString(36).substring(7);
