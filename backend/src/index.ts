@@ -6,6 +6,7 @@ import chatRoutes from './routes/chat';
 import fileRoutes from './routes/file';
 import readmeRoutes from './routes/readme';
 import actRoutes from './routes/act';
+import riskRadarRoutes from './routes/riskRadar';
 
 const app = express();
 const port = parseInt(process.env.PORT || '3001', 10);
@@ -44,6 +45,7 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/file', fileRoutes);
 app.use('/api/generate-readme', readmeRoutes);
 app.use('/api/act', actRoutes);
+app.use('/api/risk-radar', riskRadarRoutes);
 
 // --- Centralized Error Handler ---
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

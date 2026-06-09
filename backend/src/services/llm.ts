@@ -12,6 +12,23 @@ const mistral = new Mistral({
   apiKey: process.env.MISTRAL_API_KEY || ''
 });
 
+// ─── Mistral startup check ────────────────────────────────────────────────────
+console.log('MISTRAL_API_KEY:', process.env.MISTRAL_API_KEY ? '✅ loaded' : '❌ MISSING');
+
+const testMistral = async () => {
+  try {
+    await mistral.chat.complete({
+      model: 'mistral-small-latest',
+      messages: [{ role: 'user', content: 'ping' }],
+      maxTokens: 5,
+    });
+    console.log('✅ Mistral API connection verified');
+  } catch (err: any) {
+    console.error('❌ Mistral API test failed:', err.message);
+  }
+};
+testMistral();
+
 const ollamaSystemPrompt = `You are a JSON API endpoint.
 RULES YOU MUST FOLLOW WITHOUT EXCEPTION:
 1. Your ENTIRE response must be a single valid JSON object

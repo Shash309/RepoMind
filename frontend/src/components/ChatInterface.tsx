@@ -2,13 +2,38 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Copy, Check, GitBranch, AlertTriangle, Loader2 } from 'lucide-react';
+import { Send, Copy, Check, GitBranch, AlertTriangle, Loader2, Target } from 'lucide-react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/cjs/styles/prism';
 import { ChatMessage } from '../types';
 import { useActMode } from '../hooks/useActMode';
+import { useRiskRadar } from '../hooks/useRiskRadar';
 import ActModeCard from './ActModeCard';
 import DiffViewer from './DiffViewer';
+import RiskRadarCard from './RiskRadarCard';
+
+// ─── Risk Radar Intent Detection ──────────────────────────────────────────────
+// Runs on the FRONTEND before the fetch — keeps the chat pipeline clean.
+const isRiskRadarRequest = (msg: string): boolean => {
+  const patterns = [
+    /what (will|would|could) break/i,
+    /impact of/i,
+    /if i (change|modify|refactor|remove|delete|update)/i,
+    /before i (change|modify|refactor|touch)/i,
+    /risk (of|analysis|radar)/i,
+    /blast radius/i,
+    /what (depends|relies) on/i,
+    /analyze (the )?impact/i,
+    /what (calls|uses|imports)/i,
+    /dependencies of/i,
+    /affected (by|files)/i,
+    /i want to refactor/i,
+    /planning to (change|modify|remove)/i,
+    /thinking (about|of) (changing|modifying)/i,
+    /i(f| am) (going to|going) (change|refactor|remove|delete)/i,
+  ];
+  return patterns.some(p => p.test(msg));
+};
 
 const SUGGESTIONS = [
   "Where is authentication handled?",
@@ -97,10 +122,12 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
 interface ChatInterfaceProps {
   activeFile?: string | null;
   repoUrl: string;
+  onOpenFile?: (filePath: string) => void;
 }
 
-export default function ChatInterface({ activeFile, repoUrl }: ChatInterfaceProps) {
+export default function ChatInterface({ activeFile, repoUrl, onOpenFile }: ChatInterfaceProps) {
   const actMode = useActMode();
+  const riskRadar = useRiskRadar();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [localActiveFile, setLocalActiveFile] = useState<string | null>(activeFile || null);
   const [input, setInput] = useState('');
@@ -127,6 +154,15 @@ export default function ChatInterface({ activeFile, repoUrl }: ChatInterfaceProp
 
   const sendMessage = async (text: string, skipClassify = false) => {
     if (!text.trim() || isLoading) return;
+
+    // ── Risk Radar routing (before any fetch) ─────────────────────────────
+    if (!skipClassify && isRiskRadarRequest(text)) {
+      const userMsg: ChatMessage = { role: 'user', content: text };
+      setMessages(prev => [...prev, userMsg]);
+      setInput('');
+      riskRadar.startAnalysis(text, repoUrl);
+      return;
+    }
 
     const userMsg: ChatMessage = { role: 'user', content: text };
     const newMessages = [...messages, userMsg];
@@ -555,6 +591,103 @@ export default function ChatInterface({ activeFile, repoUrl }: ChatInterfaceProp
               </div>
             </motion.div>
           )}
+          {/* ── Risk Radar: Analyzing loader ────────────────────────────── */}
+          {riskRadar.isActive && riskRadar.status !== 'complete' && riskRadar.status !== 'error' && (
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-start gap-3 w-full"
+            >
+              <div className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center mt-0.5"
+                style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)' }}
+              >
+                <Target className="w-3.5 h-3.5 text-red-400" />
+              </div>
+              <div
+                className="w-full max-w-[90%] rounded-2xl p-4 rounded-tl-sm flex flex-col gap-3"
+                style={{ background: 'rgba(17,17,28,0.85)', border: '1px solid rgba(239,68,68,0.15)', backdropFilter: 'blur(12px)' }}
+              >
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ background: 'rgba(239,68,68,0.15)' }}>
+                    <span className="text-xs">🎯</span>
+                  </div>
+                  <span className="text-xs font-bold text-red-400 uppercase tracking-widest">Risk Radar</span>
+                  <span className="text-[10px] text-gray-600">Analyzing codebase...</span>
+                </div>
+                {/* Step indicators */}
+                <div className="flex flex-col gap-1.5">
+                  {riskRadar.steps.map(step => (
+                    <div key={step.stage} className="flex items-center gap-2.5">
+                      <div className="w-4 h-4 flex-shrink-0 flex items-center justify-center">
+                        {step.done ? (
+                          <span className="text-green-400 text-xs">✓</span>
+                        ) : step.active ? (
+                          <Loader2 className="w-3.5 h-3.5 text-violet-400 animate-spin" />
+                        ) : (
+                          <div className="w-1.5 h-1.5 rounded-full bg-gray-700" />
+                        )}
+                      </div>
+                      <span className={`text-[11px] ${
+                        step.done ? 'text-green-400' : step.active ? 'text-violet-300 font-medium' : 'text-gray-600'
+                      }`}>
+                        {step.icon} {step.label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* ── Risk Radar: Complete card ──────────────────────────────────── */}
+          {riskRadar.status === 'complete' && riskRadar.result && (
+            <div className="w-full">
+              <RiskRadarCard
+                result={riskRadar.result}
+                onSwitchToActMode={() => {
+                  const req = riskRadar.userRequest;
+                  riskRadar.clear();
+                  actMode.startPlanning(req, repoUrl);
+                }}
+                onDismiss={() => riskRadar.clear()}
+                onOpenFile={onOpenFile}
+              />
+            </div>
+          )}
+
+          {/* ── Risk Radar: Error state ────────────────────────────────────── */}
+          {riskRadar.status === 'error' && (
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-start gap-3 w-full"
+            >
+              <div className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center mt-0.5"
+                style={{ background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)' }}
+              >
+                <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
+              </div>
+              <div className="w-full max-w-[85%] rounded-2xl p-4 rounded-tl-sm bg-red-500/10 border border-red-500/20 backdrop-blur-md flex flex-col gap-2.5">
+                <p className="text-xs text-red-400 font-bold tracking-wider uppercase">Risk Radar Error</p>
+                <p className="text-xs text-red-200 leading-normal">{riskRadar.error || 'Analysis failed.'}</p>
+                <div className="flex gap-2 mt-1">
+                  <button
+                    onClick={() => riskRadar.clear()}
+                    className="py-1 px-3 rounded-lg text-xs font-semibold border border-white/10 text-gray-300 hover:text-white hover:bg-white/5 transition-all"
+                  >
+                    Dismiss
+                  </button>
+                  <button
+                    onClick={() => riskRadar.startAnalysis(riskRadar.userRequest, repoUrl)}
+                    className="py-1 px-3 rounded-lg text-xs font-semibold text-white transition-all"
+                    style={{ background: 'linear-gradient(135deg, #7c3aed, #06b6d4)' }}
+                  >
+                    Retry
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
         </AnimatePresence>
         <div ref={messagesEndRef} />
       </div>
@@ -600,19 +733,19 @@ export default function ChatInterface({ activeFile, repoUrl }: ChatInterfaceProp
             onKeyDown={handleKeyDown}
             placeholder="Ask anything about the codebase..."
             rows={1}
-            disabled={isLoading || actMode.status !== 'idle'}
+            disabled={isLoading || actMode.status !== 'idle' || riskRadar.isActive}
             className="w-full px-4 pt-3.5 pb-3 pr-12 bg-transparent text-gray-200 text-sm placeholder-gray-600 focus:outline-none resize-none font-sans"
             style={{ maxHeight: '120px' }}
           />
           <motion.button
             onClick={() => sendMessage(input)}
-            disabled={isLoading || !input.trim() || actMode.status !== 'idle'}
+            disabled={isLoading || !input.trim() || actMode.status !== 'idle' || riskRadar.isActive}
             className="absolute right-2 bottom-2 w-8 h-8 rounded-lg flex items-center justify-center transition-all"
             style={{
-              background: input.trim() && !isLoading && actMode.status === 'idle' ? 'linear-gradient(135deg, #7c3aed, #06b6d4)' : 'rgba(255,255,255,0.04)',
+              background: input.trim() && !isLoading && actMode.status === 'idle' && !riskRadar.isActive ? 'linear-gradient(135deg, #7c3aed, #06b6d4)' : 'rgba(255,255,255,0.04)',
             }}
-            whileHover={input.trim() && !isLoading && actMode.status === 'idle' ? { scale: 1.05 } : {}}
-            whileTap={input.trim() && !isLoading && actMode.status === 'idle' ? { scale: 0.95 } : {}}
+            whileHover={input.trim() && !isLoading && actMode.status === 'idle' && !riskRadar.isActive ? { scale: 1.05 } : {}}
+            whileTap={input.trim() && !isLoading && actMode.status === 'idle' && !riskRadar.isActive ? { scale: 0.95 } : {}}
           >
             <Send className="w-3.5 h-3.5 text-white" />
           </motion.button>
